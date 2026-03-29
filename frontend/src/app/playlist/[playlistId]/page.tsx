@@ -40,6 +40,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
   const songsRef = useRef<ApiSong[]>([]);
   const isOwnerRef = useRef(false);
   const currentTopSongIdRef = useRef<string | null>(null);
+  const activePlayerSongIdRef = useRef<string | null>(null);
   const [currentVideoTitle, setCurrentVideoTitle] = useState("");
 
   const isOwner = useMemo(() => {
@@ -176,6 +177,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
 
     if (playerRef.current && nextVideoId) {
       playerRef.current.loadVideoById(nextVideoId);
+      activePlayerSongIdRef.current = nextTop?.id ?? null;
       setCurrentVideoTitle(nextTop?.title ?? "");
     }
   };
@@ -183,6 +185,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
   useEffect(() => {
     if (!isOwner) {
       setCurrentVideoTitle("");
+      activePlayerSongIdRef.current = null;
       return;
     }
 
@@ -190,15 +193,12 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
     const videoId = extractYouTubeId(topSong?.url);
     setCurrentVideoTitle(topSong?.title ?? "");
 
-    if (!playerContainerRef.current) {
+    if (!playerContainerRef.current || !topSong || !videoId) {
+      activePlayerSongIdRef.current = null;
       return;
     }
 
     if (!playerRef.current) {
-      if (!videoId) {
-        return;
-      }
-
       const player = YouTubePlayer(playerContainerRef.current, {
         videoId,
         playerVars: {
@@ -207,6 +207,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
         },
       });
       playerRef.current = player;
+      activePlayerSongIdRef.current = topSong.id;
 
       player.on("stateChange", (event: { data?: number }) => {
         if (event?.data === 0 && isOwnerRef.current && currentTopSongIdRef.current) {
@@ -216,6 +217,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
 
             if (nextVideoId && playerRef.current) {
               playerRef.current.loadVideoById(nextVideoId);
+              activePlayerSongIdRef.current = nextTop?.id ?? null;
               setCurrentVideoTitle(nextTop?.title ?? "");
             }
           });
@@ -224,10 +226,11 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
       return;
     }
 
-    if (videoId) {
+    if (activePlayerSongIdRef.current !== topSong.id) {
       playerRef.current.loadVideoById(videoId);
+      activePlayerSongIdRef.current = topSong.id;
     }
-  }, [isOwner, songs]);
+  }, [deleteSongById, isOwner, songs]);
 
   useEffect(() => {
     return () => {
@@ -269,23 +272,23 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
               </div>
             </div>
 
-            <div className="rounded-[1.5rem] bg-slate-950 p-5 text-white">
-              <div className="flex items-center gap-2 text-sm font-medium text-slate-300">
+            <div className="rounded-[1.5rem] border border-cyan-100 bg-gradient-to-br from-cyan-50 via-white to-amber-50 p-5 text-slate-900">
+              <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
                 <Music2 className="size-4" />
                 Now playing
               </div>
               {isOwner ? (
                 <>
-                  <div className="mt-4 aspect-video overflow-hidden rounded-2xl bg-slate-900">
+                  <div className="mt-4 aspect-video overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
                     <div ref={playerContainerRef} className="h-full w-full" />
                   </div>
                   <div className="mt-4 flex items-center justify-between gap-4">
-                    <div className="text-sm text-slate-300">
+                    <div className="text-sm text-slate-600">
                       {currentVideoTitle || "The highest-voted song will appear here once the queue has tracks."}
                     </div>
                     <Button
                       type="button"
-                      variant="secondary"
+                      variant="outline"
                       onClick={skipCurrentTopSong}
                       disabled={!songs.length}
                     >
@@ -295,7 +298,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
                   </div>
                 </>
               ) : (
-                <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-white/80 p-4 text-sm text-slate-600">
                   Only the playlist creator can control playback. You can still add songs and vote for the next track.
                 </div>
               )}

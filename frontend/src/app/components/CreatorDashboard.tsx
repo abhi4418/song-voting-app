@@ -105,9 +105,9 @@ export default function CreatorDashboard() {
           </div>
         </div>
 
-        <Card className="border-white/70 bg-slate-950 text-white shadow-none">
+        <Card className="border-amber-100 bg-gradient-to-br from-amber-50 via-white to-cyan-50 shadow-none">
           <CardHeader>
-            <CardTitle className="text-xl">Create a new playlist</CardTitle>
+            <CardTitle className="text-xl text-slate-900">Create a new playlist</CardTitle>
           </CardHeader>
           <CardContent>
             <form className="space-y-4" onSubmit={handleCreatePlaylist}>
@@ -115,10 +115,10 @@ export default function CreatorDashboard() {
                 value={playlistName}
                 onChange={(event) => setPlaylistName(event.target.value)}
                 placeholder="Weekend rooftop set"
-                className="border-white/15 bg-white/10 text-white placeholder:text-slate-400"
+                className="border-slate-200 bg-white text-slate-900 placeholder:text-slate-400"
                 maxLength={80}
               />
-              <Button type="submit" disabled={isCreating} className="w-full bg-cyan-400 text-slate-950 hover:bg-cyan-300">
+              <Button type="submit" disabled={isCreating} className="w-full">
                 {isCreating ? "Creating playlist..." : "Create playlist"}
               </Button>
             </form>
@@ -161,7 +161,7 @@ export default function CreatorDashboard() {
                       <div className="text-xs font-medium uppercase tracking-[0.28em] text-primary">Playlist</div>
                       <h3 className="mt-3 text-xl font-semibold text-slate-900">{playlist.name}</h3>
                     </div>
-                    <span className="rounded-full bg-slate-950 px-3 py-1 text-xs text-white">
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
                       {playlist.totalVotes} votes
                     </span>
                   </div>
