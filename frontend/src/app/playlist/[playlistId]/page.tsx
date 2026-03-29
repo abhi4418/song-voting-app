@@ -1,269 +1,355 @@
-"use client"
-import { useAuth } from '@/context/AuthContext';
-import axios from 'axios';
-import {use , useEffect, useMemo, useRef, useState} from 'react'
-import SongSearchBar from '@/app/components/SongSearchBar';
-import SongCard, { ApiSong } from './SongCard'
-import YouTubePlayer from 'youtube-player'
+"use client";
 
-interface ApiSongLocal extends ApiSong {}
+import SongSearchBar from "@/app/components/SongSearchBar";
+import ProtectedRoute from "@/components/ProtectedRoute";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/context/AuthContext";
+import { apiRequest } from "@/lib/api";
+import { Music2, SkipForward } from "lucide-react";
+import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import SongCard, { type ApiSong } from "./SongCard";
+import YouTubePlayer from "youtube-player";
+
+type PlaylistDetails = {
+  id: string;
+  name: string;
+  creatorId: string;
+  createdAt: string;
+  creator: {
+    email: string;
+  };
+};
+
+type PlaylistDetailsResponse = {
+  playlist: PlaylistDetails;
+};
+
+type SongsResponse = {
+  songs: ApiSong[];
+};
 
 export default function PlaylistPage({ params }: { params: Promise<{ playlistId: string }> }) {
-    const { isLoading , user, token } = useAuth();
-    const { playlistId } = use(params);
-    const [songs, setSongs] = useState<ApiSongLocal[]>([]);
-    const [loading, setLoading] = useState<boolean>(false);
-    const [error, setError] = useState<string | null>(null);
-    const [creatorId, setCreatorId] = useState<string | null>(null);
-    const playerContainerRef = useRef<HTMLDivElement | null>(null);
-    const playerRef = useRef<ReturnType<typeof YouTubePlayer> | null>(null);
-    const songsRef = useRef<ApiSongLocal[]>([]);
-    const isOwnerRef = useRef<boolean>(false);
-    const currentTopSongIdRef = useRef<string | null>(null);
-    const [currentVideoTitle, setCurrentVideoTitle] = useState<string>("");
+  const { isLoading, user, token } = useAuth();
+  const { playlistId } = use(params);
+  const [songs, setSongs] = useState<ApiSong[]>([]);
+  const [loadingSongs, setLoadingSongs] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [playlist, setPlaylist] = useState<PlaylistDetails | null>(null);
+  const playerContainerRef = useRef<HTMLDivElement | null>(null);
+  const playerRef = useRef<ReturnType<typeof YouTubePlayer> | null>(null);
+  const songsRef = useRef<ApiSong[]>([]);
+  const isOwnerRef = useRef(false);
+  const currentTopSongIdRef = useRef<string | null>(null);
+  const [currentVideoTitle, setCurrentVideoTitle] = useState("");
 
-    const isOwner = useMemo(() => {
-        if(!user || !creatorId) return false;
-        return user.id === creatorId;
-    }, [user, creatorId]);
-
-    
-    const fetchPlayListData = async () => {
-        try {
-            setError(null);
-            setLoading(true);
-            const response = await axios.get(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/playlist/songs-sorted/${playlistId}` , {
-                headers : {
-                    Authorization : `${localStorage.getItem("token")}`
-                }
-            })
-            const fetched = response.data.songs as ApiSong[];
-            setSongs(fetched);
-        } catch (e) {
-            setError('Failed to load playlist');
-        } finally {
-            setLoading(false);
-        }
+  const isOwner = useMemo(() => {
+    if (!user || !playlist?.creatorId) {
+      return false;
     }
 
-    const fetchPlaylistDetails = async () => {
-        try {
-            const response = await axios.get(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/playlist/details/${playlistId}` , {
-                headers : {
-                    Authorization : token || `${localStorage.getItem("token")}`
-                }
-            })
-            if(response.data?.playlist?.creatorId){
-                setCreatorId(response.data.playlist.creatorId);
-            }
-        } catch (_e) {
-            // ignore details error; not critical for non-owners
-        }
+    return user.id === playlist.creatorId;
+  }, [playlist?.creatorId, user]);
+
+  const fetchPlayListData = useCallback(async () => {
+    if (!token) {
+      return;
     }
 
-    useEffect(() => {
-        fetchPlayListData();
-        fetchPlaylistDetails();
-    }, [playlistId]);
+    try {
+      setError(null);
+      setLoadingSongs(true);
+      const response = await apiRequest<SongsResponse>(`/api/playlist/songs-sorted/${playlistId}`, {
+        method: "GET",
+        token,
+      });
 
-    // Helper: extract YouTube video ID from a URL
-    const extractYouTubeId = (url: string | undefined | null): string | null => {
-        if (!url) return null;
-        try {
-            const u = new URL(url);
-            if (u.hostname.includes('youtu.be')) {
-                return u.pathname.replace('/', '') || null;
-            }
-            if (u.hostname.includes('youtube.com') || u.hostname.includes('youtube-nocookie.com')) {
-                const v = u.searchParams.get('v');
-                if (v) return v;
-                const pathParts = u.pathname.split('/');
-                const idx = pathParts.findIndex((p) => p === 'embed');
-                if (idx >= 0 && pathParts[idx + 1]) return pathParts[idx + 1];
-            }
-        } catch (_e) {
-            return null;
-        }
-        return null;
-    };
+      setSongs(response.songs ?? []);
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : "Failed to load playlist");
+    } finally {
+      setLoadingSongs(false);
+    }
+  }, [playlistId, token]);
 
-    // Helper: pick the song with the highest likes
-    const getTopLikedSong = (list: ApiSongLocal[]): ApiSongLocal | null => {
-        if (!Array.isArray(list) || list.length === 0) return null;
-        return list.reduce((top, cur) => {
-            const topLikes = Array.isArray(top.likes) ? top.likes.length : 0;
-            const curLikes = Array.isArray(cur.likes) ? cur.likes.length : 0;
-            return curLikes > topLikes ? cur : top;
-        });
-    };
+  const fetchPlaylistDetails = useCallback(async () => {
+    if (!token) {
+      return;
+    }
 
-    // Keep refs in sync for stable event handlers
-    useEffect(() => {
-        songsRef.current = songs;
-        isOwnerRef.current = isOwner;
-        const top = getTopLikedSong(songs);
-        currentTopSongIdRef.current = top?.id || null;
-    }, [songs, isOwner]);
+    try {
+      const response = await apiRequest<PlaylistDetailsResponse>(`/api/playlist/details/${playlistId}`, {
+        method: "GET",
+        token,
+      });
 
-    const deleteSongById = async (songId: string) => {
-        try {
-            await axios.delete(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/song/delete/${songId}`, {
-                headers: { Authorization: `${localStorage.getItem('token')}` }
-            });
-            await fetchPlayListData();
-        } catch (_e) {
-            // swallow; UI will reflect on next refresh/like
-        }
-    };
+      setPlaylist(response.playlist);
+    } catch (_error) {
+      setPlaylist(null);
+    }
+  }, [playlistId, token]);
 
-    const skipCurrentTopSong = async () => {
-        const top = getTopLikedSong(songsRef.current || []);
-        if (!top) return;
-        if (!isOwnerRef.current) return; // safety: only owner can mutate backend
-        await deleteSongById(top.id);
-        const nextTop = getTopLikedSong(songsRef.current || []);
-        const nextVideoId = extractYouTubeId(nextTop?.url);
-        if (playerRef.current && nextVideoId) {
-            playerRef.current.loadVideoById(nextVideoId);
-            setCurrentVideoTitle(nextTop?.title || "");
-        }
-    };
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
 
+    void fetchPlayListData();
+    void fetchPlaylistDetails();
+  }, [fetchPlayListData, fetchPlaylistDetails, playlistId, token]);
 
-    useEffect(() => {
-        // Only creators should initialize and control the player
-        if (!isOwner) {
-            setCurrentVideoTitle("");
-            return;
-        }
+  const extractYouTubeId = (url: string | undefined | null): string | null => {
+    if (!url) {
+      return null;
+    }
 
-        const topSong = getTopLikedSong(songs);
-        const videoId = extractYouTubeId(topSong?.url);
-        setCurrentVideoTitle(topSong?.title || "");
+    try {
+      const parsedUrl = new URL(url);
 
-        if (!playerContainerRef.current) return;
+      if (parsedUrl.hostname.includes("youtu.be")) {
+        return parsedUrl.pathname.replace("/", "") || null;
+      }
 
-        // Create player once and bind end event
-        if (!playerRef.current) {
-            if (!videoId) return; // nothing to play yet
-            const player = YouTubePlayer(playerContainerRef.current, {
-                videoId,
-                playerVars: {
-                    rel: 0,
-                    modestbranding: 1,
-                },
-            });
-            playerRef.current = player;
-
-            // 0 === ended per YT IFrame API
-            player.on('stateChange', (event: any) => {
-                if (event?.data === 0) {
-                    // Only playlist owner should perform backend removal and advance
-                    if (isOwnerRef.current && currentTopSongIdRef.current) {
-                        // Fire and forget; UI will refetch and advance
-                        deleteSongById(currentTopSongIdRef.current).then(() => {
-                            const nextTop = getTopLikedSong(songsRef.current || []);
-                            const nextVideoId = extractYouTubeId(nextTop?.url);
-                            if (nextVideoId && playerRef.current) {
-                                playerRef.current.loadVideoById(nextVideoId);
-                                setCurrentVideoTitle(nextTop?.title || "");
-                            }
-                        });
-                    }
-                }
-            });
-            return;
-        }
+      if (
+        parsedUrl.hostname.includes("youtube.com") ||
+        parsedUrl.hostname.includes("youtube-nocookie.com")
+      ) {
+        const videoId = parsedUrl.searchParams.get("v");
 
         if (videoId) {
-            // Autoplay current top song when list changes
-            playerRef.current.loadVideoById(videoId);
+          return videoId;
         }
-    }, [songs, isOwner]);
 
-    useEffect(() => {
-        return () => {
-            if (playerRef.current) {
-                playerRef.current.destroy();
-                playerRef.current = null;
-            }
-        };
-    }, []);
-
-    if(isLoading){
-        return <div>Loading...</div>
+        const pathParts = parsedUrl.pathname.split("/");
+        const embedIndex = pathParts.findIndex((part) => part === "embed");
+        if (embedIndex >= 0 && pathParts[embedIndex + 1]) {
+          return pathParts[embedIndex + 1];
+        }
+      }
+    } catch (_error) {
+      return null;
     }
 
-    return  (
-        <div className="mx-auto max-w-6xl px-4 py-8">
-            <div className="mb-6">
-                <h1 className="text-2xl font-semibold tracking-tight">Playlist</h1>
-                <h2 className="text-sm text-muted-foreground">Created by {user?.email}</h2>
-            </div>
+    return null;
+  };
 
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                <div>
-                    <div className="mb-6">
-                        <SongSearchBar onAdded={fetchPlayListData} />
-                    </div>
+  const getTopLikedSong = (list: ApiSong[]): ApiSong | null => {
+    if (!Array.isArray(list) || list.length === 0) {
+      return null;
+    }
 
-                    {error ? (
-                        <div className="text-destructive">{error}</div>
-                    ) : null}
+    return list.reduce((top, current) => {
+      const topLikes = Array.isArray(top.likes) ? top.likes.length : 0;
+      const currentLikes = Array.isArray(current.likes) ? current.likes.length : 0;
+      return currentLikes > topLikes ? current : top;
+    });
+  };
 
-                    {loading ? (
-                        <div className="grid grid-cols-1 gap-4">
-                            {Array.from({ length: 8 }).map((_, idx) => (
-                                <div key={idx} className="h-24 animate-pulse rounded-xl border" />
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 gap-3">
-                            {songs.map((song) => (
-                                <SongCard
-                                    key={song.id}
-                                    song={song}
-                                    playlistId={playlistId}
-                                    isOwner={isOwner}
-                                    onAfterChange={fetchPlayListData}
-                                    currentUserId={user?.id || null}
-                                />
-                            ))}
-                        </div>
-                    )}
+  useEffect(() => {
+    songsRef.current = songs;
+    isOwnerRef.current = isOwner;
+    const topSong = getTopLikedSong(songs);
+    currentTopSongIdRef.current = topSong?.id ?? null;
+  }, [isOwner, songs]);
+
+  const deleteSongById = useCallback(async (songId: string) => {
+    if (!token) {
+      return;
+    }
+
+    await apiRequest(`/api/song/delete/${songId}`, {
+      method: "DELETE",
+      token,
+    });
+    await fetchPlayListData();
+  }, [fetchPlayListData, token]);
+
+  const skipCurrentTopSong = async () => {
+    const topSong = getTopLikedSong(songsRef.current);
+
+    if (!topSong || !isOwnerRef.current) {
+      return;
+    }
+
+    await deleteSongById(topSong.id);
+    const nextTop = getTopLikedSong(songsRef.current);
+    const nextVideoId = extractYouTubeId(nextTop?.url);
+
+    if (playerRef.current && nextVideoId) {
+      playerRef.current.loadVideoById(nextVideoId);
+      setCurrentVideoTitle(nextTop?.title ?? "");
+    }
+  };
+
+  useEffect(() => {
+    if (!isOwner) {
+      setCurrentVideoTitle("");
+      return;
+    }
+
+    const topSong = getTopLikedSong(songs);
+    const videoId = extractYouTubeId(topSong?.url);
+    setCurrentVideoTitle(topSong?.title ?? "");
+
+    if (!playerContainerRef.current) {
+      return;
+    }
+
+    if (!playerRef.current) {
+      if (!videoId) {
+        return;
+      }
+
+      const player = YouTubePlayer(playerContainerRef.current, {
+        videoId,
+        playerVars: {
+          rel: 0,
+          modestbranding: 1,
+        },
+      });
+      playerRef.current = player;
+
+      player.on("stateChange", (event: { data?: number }) => {
+        if (event?.data === 0 && isOwnerRef.current && currentTopSongIdRef.current) {
+          void deleteSongById(currentTopSongIdRef.current).then(() => {
+            const nextTop = getTopLikedSong(songsRef.current);
+            const nextVideoId = extractYouTubeId(nextTop?.url);
+
+            if (nextVideoId && playerRef.current) {
+              playerRef.current.loadVideoById(nextVideoId);
+              setCurrentVideoTitle(nextTop?.title ?? "");
+            }
+          });
+        }
+      });
+      return;
+    }
+
+    if (videoId) {
+      playerRef.current.loadVideoById(videoId);
+    }
+  }, [isOwner, songs]);
+
+  useEffect(() => {
+    return () => {
+      if (playerRef.current) {
+        playerRef.current.destroy();
+        playerRef.current = null;
+      }
+    };
+  }, []);
+
+  return (
+    <ProtectedRoute>
+      {isLoading ? (
+        <div className="px-6 py-10">Loading playlist...</div>
+      ) : (
+        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+          <div className="grid gap-6 rounded-[1.75rem] border border-white/70 bg-white/80 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur lg:grid-cols-[1.05fr_0.95fr]">
+            <div className="space-y-4">
+              <span className="inline-flex rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                Playlist room
+              </span>
+              <div>
+                <h1 className="text-3xl font-semibold text-slate-900">
+                  {playlist?.name ?? "Playlist"}
+                </h1>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+                  Hosted by {playlist?.creator.email ?? "the playlist creator"}. Add songs, vote on the queue,
+                  and let the top track rise to the front.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-3 text-sm text-slate-600">
+                <div className="rounded-full bg-slate-100 px-4 py-2">{songs.length} songs in queue</div>
+                <div className="rounded-full bg-slate-100 px-4 py-2">
+                  {songs.reduce((total, song) => total + song.likes.length, 0)} total votes
                 </div>
-
-                {isOwner ? (
-                    <div className="hidden md:block">
-                        <div className="sticky top-8 rounded-xl border p-4">
-                            <div className="mb-2 text-sm font-medium text-muted-foreground">Now Playing</div>
-                            <div className="aspect-video w-full overflow-hidden rounded-md bg-muted">
-                                <div ref={playerContainerRef} className="h-full w-full" />
-                            </div>
-                            <button
-                                onClick={skipCurrentTopSong}
-                                className="mt-3 inline-flex items-center rounded-md bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:opacity-90"
-                            >
-                                Skip current song
-                            </button>
-                            {currentVideoTitle ? (
-                                <div className="mt-3 line-clamp-2 text-sm">{currentVideoTitle}</div>
-                            ) : (
-                                <div className="mt-3 text-xs text-muted-foreground">Most liked song will appear here.</div>
-                            )}
-                        </div>
-                    </div>
-                ) : (
-                    <div className="hidden md:block">
-                        <div className="sticky top-8 rounded-xl border p-4">
-                            <div className="mb-2 text-sm font-medium text-muted-foreground">Playback</div>
-                            <div className="rounded-md border bg-muted p-3 text-xs text-muted-foreground">
-                                Only the playlist creator can control playback. You can add songs and like/dislike to vote the next track.
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <div className="rounded-full bg-slate-100 px-4 py-2">
+                  {isOwner ? "Creator controls enabled" : "Listener mode"}
+                </div>
+              </div>
             </div>
+
+            <div className="rounded-[1.5rem] bg-slate-950 p-5 text-white">
+              <div className="flex items-center gap-2 text-sm font-medium text-slate-300">
+                <Music2 className="size-4" />
+                Now playing
+              </div>
+              {isOwner ? (
+                <>
+                  <div className="mt-4 aspect-video overflow-hidden rounded-2xl bg-slate-900">
+                    <div ref={playerContainerRef} className="h-full w-full" />
+                  </div>
+                  <div className="mt-4 flex items-center justify-between gap-4">
+                    <div className="text-sm text-slate-300">
+                      {currentVideoTitle || "The highest-voted song will appear here once the queue has tracks."}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={skipCurrentTopSong}
+                      disabled={!songs.length}
+                    >
+                      <SkipForward className="size-4" />
+                      Skip
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+                  Only the playlist creator can control playback. You can still add songs and vote for the next track.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+            <div>
+              <SongSearchBar token={token} onAdded={fetchPlayListData} />
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-semibold text-slate-900">Queued songs</h2>
+                  <p className="text-sm text-slate-600">Sorted by votes so the next favorite rises to the top.</p>
+                </div>
+              </div>
+
+              {error ? (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                  {error}
+                </div>
+              ) : null}
+
+              {loadingSongs ? (
+                <div className="grid grid-cols-1 gap-4">
+                  {Array.from({ length: 6 }).map((_, index) => (
+                    <div key={index} className="h-28 animate-pulse rounded-[1.5rem] border border-white/60 bg-white/60" />
+                  ))}
+                </div>
+              ) : songs.length === 0 ? (
+                <div className="rounded-[1.5rem] border border-dashed border-slate-300 bg-white/70 p-8 text-sm text-slate-600">
+                  This playlist is empty right now. Search for a track on the left to start the queue.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4">
+                  {songs.map((song) => (
+                    <SongCard
+                      key={song.id}
+                      song={song}
+                      playlistId={playlistId}
+                      isOwner={isOwner}
+                      token={token}
+                      onAfterChange={fetchPlayListData}
+                      currentUserId={user?.id ?? null}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
-    )
+      )}
+    </ProtectedRoute>
+  );
 }

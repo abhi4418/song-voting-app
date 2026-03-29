@@ -25,8 +25,10 @@ songRouter.post("/search", async (req, res) => {
       });
     }
 
+    const { songName: validSongName } = parsed.data;
+
     const songs: SongType[] = [];
-    const searchResponse = await yts(songName);
+    const searchResponse = await yts(validSongName);
 
     for (const video of searchResponse.videos.slice(0, 10)) {
       songs.push({
@@ -62,9 +64,11 @@ songRouter.post("/add-song", async (req, res) => {
       });
     }
 
+    const validSong = parsed.data;
+
     const playlist = await prisma.playlist.findUnique({
       where: {
-        id: playlistId,
+        id: validSong.playlistId,
       },
       select: {
         id: true,
@@ -80,8 +84,8 @@ songRouter.post("/add-song", async (req, res) => {
 
     const existingSong = await prisma.song.findFirst({
       where: {
-        playlistId,
-        url,
+        playlistId: validSong.playlistId,
+        url: validSong.url,
       },
       select: {
         id: true,
@@ -97,11 +101,11 @@ songRouter.post("/add-song", async (req, res) => {
 
     const song = await prisma.song.create({
       data: {
-        playlistId,
-        title,
-        thumbNailUrl,
-        duration,
-        url,
+        playlistId: validSong.playlistId,
+        title: validSong.title,
+        thumbNailUrl: validSong.thumbNailUrl,
+        duration: validSong.duration,
+        url: validSong.url,
       },
     });
 
@@ -130,10 +134,12 @@ songRouter.post("/like-song", async (req, res) => {
       });
     }
 
+    const validLike = parsed.data;
+
     const song = await prisma.song.findFirst({
       where: {
-        id: songId,
-        playlistId,
+        id: validLike.songId,
+        playlistId: validLike.playlistId,
       },
       select: {
         id: true,
@@ -150,8 +156,8 @@ songRouter.post("/like-song", async (req, res) => {
     const existingLike = await prisma.likes.findFirst({
       where: {
         userId: req.userId,
-        songId,
-        playlistId,
+        songId: validLike.songId,
+        playlistId: validLike.playlistId,
       },
     });
 
@@ -169,8 +175,8 @@ songRouter.post("/like-song", async (req, res) => {
 
     const like = await prisma.likes.create({
       data: {
-        songId,
-        playlistId,
+        songId: validLike.songId,
+        playlistId: validLike.playlistId,
         userId: req.userId,
       },
     });

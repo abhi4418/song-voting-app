@@ -1,120 +1,159 @@
-import { Input } from "@/components/ui/input";
+"use client";
+
 import { Button } from "@/components/ui/button";
-import axios from "axios";
+import { Input } from "@/components/ui/input";
+import { apiRequest } from "@/lib/api";
+import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useParams } from "next/navigation";
 
 type SongType = {
-    title : string;
-    thumbNailUrl : string;
-    duration : number;
-    url : string;
-}
+  title: string;
+  thumbNailUrl: string;
+  duration: number;
+  url: string;
+};
+
+type SearchSongsResponse = {
+  songs: SongType[];
+};
 
 interface SongSearchBarProps {
-    onAdded?: () => void;
+  token: string | null;
+  onAdded?: () => void;
 }
 
-export default function SongSearchBar({ onAdded }: SongSearchBarProps) {
-    const {playlistId} = useParams<{playlistId: string}>();
-    const [debouncedInput , setDebouncedInput] = useState("");
-    const [songs , setSongs] = useState<SongType[]>([]);
-    const [loading , setLoading] = useState(false);
-    useEffect(()=>{
-        const trimmed = debouncedInput.trim();
-        if (trimmed.length < 2) {
-            // Do not search on mount or for very short/empty input
-            setSongs([]);
-            setLoading(false);
-            return;
-        }
+export default function SongSearchBar({ token, onAdded }: SongSearchBarProps) {
+  const { playlistId } = useParams<{ playlistId: string }>();
+  const [query, setQuery] = useState("");
+  const [songs, setSongs] = useState<SongType[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [addingUrl, setAddingUrl] = useState<string | null>(null);
 
-        const timer = setTimeout(()=>{
-            const fetchSongs = async ()=>{
-                try {
-                    setLoading(true);
-                    const response = await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/song/search` , {
-                        songName : trimmed
-                    } , {
-                        headers : {
-                            Authorization : `${localStorage.getItem("token")}`
-                        }
-                    })
-                    setSongs(response.data.songs);
-                } catch (error) {
-                    toast.error("Failed to search songs");
-                } finally {
-                    setLoading(false);
-                }
-            }
-            fetchSongs();
-        },400)
+  useEffect(() => {
+    const trimmed = query.trim();
 
-        return ()=>clearTimeout(timer);
-    },[debouncedInput])
-
-    const handleAddSong = async (song: SongType) => {
-        // this should also be added in playlist so refresh is not needed
-        const response = await axios.post(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/song/add-song` , {
-            playlistId : playlistId,
-            title : song.title,
-            thumbNailUrl : song.thumbNailUrl,
-            duration : song.duration,
-            url : song.url
-        } , {
-            headers : {
-                Authorization : `${localStorage.getItem("token")}`
-            }
-        })
-        if(response.data.success){
-            toast.success("Song added successfully");
-            setSongs([]);
-            onAdded?.();
-        }
+    if (trimmed.length < 2 || !token) {
+      setSongs([]);
+      setLoading(false);
+      return;
     }
 
-    const formatDuration = (totalSeconds: number): string => {
-        if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return "0:00";
-        const minutes = Math.floor(totalSeconds / 60);
-        const seconds = Math.floor(totalSeconds % 60);
-        return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+    const timer = window.setTimeout(() => {
+      const fetchSongs = async () => {
+        try {
+          setLoading(true);
+          const response = await apiRequest<SearchSongsResponse>("/api/song/search", {
+            method: "POST",
+            token,
+            json: {
+              songName: trimmed,
+            },
+          });
+
+          setSongs(response.songs ?? []);
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Failed to search songs");
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      void fetchSongs();
+    }, 400);
+
+    return () => window.clearTimeout(timer);
+  }, [query, token]);
+
+  const handleAddSong = async (song: SongType) => {
+    if (!playlistId || !token) {
+      return;
     }
 
-    return (
-        <div className="w-full max-w-md">
-            <div className="flex items-center gap-2">
-                <Input
-                    type="text"
-                    placeholder="Search"
-                    value={debouncedInput}
-                    onChange={(e)=>setDebouncedInput(e.target.value)}
-                    className="h-9 text-sm px-3 rounded-full"
-                />
-                <Button type="button" className="h-9 w-9 p-0 rounded-full" aria-label="Search">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
-                        <path fillRule="evenodd" d="M10.5 3.75a6.75 6.75 0 1 0 4.243 11.93l3.788 3.789a.75.75 0 1 0 1.06-1.06l-3.789-3.789A6.75 6.75 0 0 0 10.5 3.75Zm-5.25 6.75a5.25 5.25 0 1 1 10.5 0 5.25 5.25 0 0 1-10.5 0Z" clipRule="evenodd" />
-                    </svg>
-                </Button>
-            </div>
-            {loading && (
-                <div className="mt-3 space-y-2">
-                    <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
-                </div>
-            )}
-            {songs.length > 0 && (
-                <div className="mt-3 space-y-2">
-                    {songs.map((song)=>(
-                        <div onClick={()=>handleAddSong(song)} key={song.title} className="flex items-center gap-3 cursor-pointer">
-                            <img src={song.thumbNailUrl} alt={song.title} className="w-10 h-10 object-cover rounded" />
-                            <div className="text-sm">
-                                <p className="font-medium leading-tight line-clamp-1">{song.title}</p>
-                                <p className="text-xs text-muted-foreground">{formatDuration(song.duration)}</p>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
+    try {
+      setAddingUrl(song.url);
+      await apiRequest("/api/song/add-song", {
+        method: "POST",
+        token,
+        json: {
+          playlistId,
+          title: song.title,
+          thumbNailUrl: song.thumbNailUrl,
+          duration: song.duration,
+          url: song.url,
+        },
+      });
+
+      toast.success("Song added successfully");
+      setSongs([]);
+      setQuery("");
+      onAdded?.();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to add song");
+    } finally {
+      setAddingUrl(null);
+    }
+  };
+
+  const formatDuration = (totalSeconds: number): string => {
+    if (!Number.isFinite(totalSeconds) || totalSeconds < 0) {
+      return "0:00";
+    }
+
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = Math.floor(totalSeconds % 60);
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  };
+
+  return (
+    <div className="rounded-[1.5rem] border border-white/70 bg-white/85 p-5 shadow-[0_16px_40px_rgba(15,23,42,0.06)]">
+      <div className="space-y-1">
+        <h3 className="text-lg font-semibold text-slate-900">Add a song</h3>
+        <p className="text-sm text-slate-600">Search YouTube and add a track to this playlist.</p>
+      </div>
+
+      <div className="mt-4 flex items-center gap-2">
+        <Input
+          type="text"
+          placeholder="Search by song title or artist"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          className="h-11 rounded-full px-4"
+        />
+      </div>
+
+      {loading ? (
+        <div className="mt-4 space-y-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="h-16 animate-pulse rounded-2xl bg-slate-100" />
+          ))}
         </div>
-    )
+      ) : null}
+
+      {songs.length > 0 ? (
+        <div className="mt-4 space-y-3">
+          {songs.map((song) => (
+            <div
+              key={song.url}
+              className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3"
+            >
+              <img src={song.thumbNailUrl} alt={song.title} className="h-14 w-20 rounded-xl object-cover" />
+              <div className="min-w-0 flex-1">
+                <p className="line-clamp-1 font-medium text-slate-900">{song.title}</p>
+                <p className="mt-1 text-xs text-slate-500">{formatDuration(song.duration)}</p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => handleAddSong(song)}
+                disabled={addingUrl === song.url}
+              >
+                {addingUrl === song.url ? "Adding..." : "Add"}
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
 }

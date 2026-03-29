@@ -47,12 +47,13 @@ export const withBearerToken = (token?: string | null) => {
 
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const { json, token, headers, ...init } = options;
+  const authorization = withBearerToken(token);
   const response = await fetch(`${BACKEND_URL}${path}`, {
     ...init,
     cache: "no-store",
     headers: {
       ...(json !== undefined ? { "Content-Type": "application/json" } : {}),
-      ...(withBearerToken(token) ? { Authorization: withBearerToken(token) } : {}),
+      ...(authorization ? { Authorization: authorization } : {}),
       ...(headers ?? {}),
     },
     body: json !== undefined ? JSON.stringify(json) : init.body,

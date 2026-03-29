@@ -31,9 +31,11 @@ authRouter.post("/sign-up", async (req, res) => {
       });
     }
 
+    const { email: normalizedEmail, password: validPassword, role: validRole } = parsed.data;
+
     const existingUser = await prisma.user.findUnique({
       where: {
-        email,
+        email: normalizedEmail,
       },
     });
 
@@ -44,11 +46,11 @@ authRouter.post("/sign-up", async (req, res) => {
       });
     }
 
-    const hashedPassword = await Bun.password.hash(password, "bcrypt");
+    const hashedPassword = await Bun.password.hash(validPassword, "bcrypt");
     const user = await prisma.user.create({
       data: {
-        email,
-        role,
+        email: normalizedEmail,
+        role: validRole,
         password: hashedPassword,
       },
     });
@@ -93,20 +95,22 @@ authRouter.post("/sign-in", async (req, res) => {
       });
     }
 
+    const { email: normalizedEmail, password: validPassword, role: validRole } = parsed.data;
+
     const user = await prisma.user.findUnique({
       where: {
-        email,
+        email: normalizedEmail,
       },
     });
 
-    if (!user || user.role !== role) {
+    if (!user || user.role !== validRole) {
       return res.status(401).json({
         success: false,
         message: "Invalid credentials",
       });
     }
 
-    const isPasswordValid = await Bun.password.verify(password, user.password, "bcrypt");
+    const isPasswordValid = await Bun.password.verify(validPassword, user.password, "bcrypt");
 
     if (!isPasswordValid) {
       return res.status(401).json({

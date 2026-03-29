@@ -1,96 +1,191 @@
-"use client"
-import { useAuth } from "@/context/AuthContext";
+"use client";
+
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import axios from "axios";
-import { useEffect, useState } from "react";
+import { Input } from "@/components/ui/input";
+import { useAuth } from "@/context/AuthContext";
+import { apiRequest } from "@/lib/api";
 import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 interface Playlist {
-    id: string;
-    name: string;
-    createdAt: Date;
-    creatorId: string;
-    songCount: number
-    totalVotes: number;
+  id: string;
+  name: string;
+  createdAt: string;
+  creatorId: string;
+  songCount: number;
+  totalVotes: number;
 }
 
+type PlaylistsResponse = {
+  playlists: Playlist[];
+};
+
+type CreatePlaylistResponse = {
+  playlist: Playlist;
+  message: string;
+};
+
 export default function CreatorDashboard() {
-    const {token} = useAuth();
-    const [playlists, setPlaylists] = useState<Playlist[]>([]);
-    const [isLoading, setIsLoading] = useState<boolean>(false);
-    const [errorMessage, setErrorMessage] = useState<string>("");
-    const router = useRouter();
-    const fetchPlaylists = async () => {
-        try {
-            setIsLoading(true);
-            setErrorMessage("");
-            const response = await axios.get(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/playlist/my-playlists` ,
-                {
-                    headers : {
-                        Authorization : token
-                    }
-                }
-            );
-            setPlaylists(response.data.playlists ?? []);
-        } catch (_err) {
-            setErrorMessage("Failed to load playlists. Please try again.");
-        } finally {
-            setIsLoading(false);
-        }
+  const { token } = useAuth();
+  const [playlistName, setPlaylistName] = useState("");
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const router = useRouter();
+
+  const fetchPlaylists = useCallback(async () => {
+    if (!token) {
+      setPlaylists([]);
+      setIsLoading(false);
+      return;
     }
 
-    const handlePlaylistClick = (playlistId: string) => {
-        router.push(`/playlist/${playlistId}`);
+    try {
+      setIsLoading(true);
+      const response = await apiRequest<PlaylistsResponse>("/api/playlist/my-playlists", {
+        method: "GET",
+        token,
+      });
+
+      setPlaylists(response.playlists ?? []);
+      setErrorMessage("");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Failed to load playlists.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    void fetchPlaylists();
+  }, [fetchPlaylists]);
+
+  const handleCreatePlaylist = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!token) {
+      return;
     }
 
-    useEffect(() => {
-        fetchPlaylists();
-    }, []);
-    return (
-    <div className="space-y-6">
+    try {
+      setIsCreating(true);
+      const response = await apiRequest<CreatePlaylistResponse>("/api/playlist/create", {
+        method: "POST",
+        token,
+        json: {
+          name: playlistName,
+        },
+      });
+
+      setPlaylistName("");
+      toast.success(response.message);
+      await fetchPlaylists();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create playlist");
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      <section className="grid gap-5 rounded-[1.75rem] border border-white/70 bg-white/80 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur lg:grid-cols-[1.05fr_0.95fr]">
+        <div className="space-y-4">
+          <span className="inline-flex rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+            Creator studio
+          </span>
+          <div className="space-y-3">
+            <h1 className="text-3xl font-semibold text-slate-900">Manage your live queues</h1>
+            <p className="max-w-2xl text-sm leading-6 text-slate-600">
+              Create a playlist, share it with your audience, and let the votes decide the next track.
+            </p>
+          </div>
+        </div>
+
+        <Card className="border-white/70 bg-slate-950 text-white shadow-none">
+          <CardHeader>
+            <CardTitle className="text-xl">Create a new playlist</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form className="space-y-4" onSubmit={handleCreatePlaylist}>
+              <Input
+                value={playlistName}
+                onChange={(event) => setPlaylistName(event.target.value)}
+                placeholder="Weekend rooftop set"
+                className="border-white/15 bg-white/10 text-white placeholder:text-slate-400"
+                maxLength={80}
+              />
+              <Button type="submit" disabled={isCreating} className="w-full bg-cyan-400 text-slate-950 hover:bg-cyan-300">
+                {isCreating ? "Creating playlist..." : "Create playlist"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="space-y-4">
         <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Creator Dashboard</h1>
-            <p className="text-sm text-muted-foreground">Your playlists at a glance</p>
+          <h2 className="text-2xl font-semibold text-slate-900">Your playlists</h2>
+          <p className="text-sm text-slate-600">Open a queue to add songs, manage playback, and moderate the list.</p>
         </div>
 
         {isLoading ? (
-            <div className="text-sm text-muted-foreground">Loading playlists…</div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="h-44 animate-pulse rounded-[1.5rem] border border-white/60 bg-white/60" />
+            ))}
+          </div>
         ) : errorMessage ? (
-            <div className="text-sm text-red-500">{errorMessage}</div>
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{errorMessage}</div>
         ) : playlists.length === 0 ? (
-            <div className="text-sm text-muted-foreground">You have not created any playlists yet.</div>
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white/60 p-8 text-sm text-slate-600">
+            You have not created any playlists yet. Start with a short title above and your dashboard will fill in here.
+          </div>
         ) : (
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {playlists.map((playlist) => {
-                    const createdAtLabel = new Date(playlist.createdAt as unknown as string).toLocaleDateString();
-                    return (
-                        <Card onClick={() => handlePlaylistClick(playlist.id)} key={playlist.id} className="hover:shadow-md transition-shadow">
-                            <CardHeader>
-                                <CardTitle className="text-base">{playlist.name}</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="flex items-center justify-between text-sm">
-                                    <div className="space-y-1">
-                                        <div className="text-muted-foreground">Songs</div>
-                                        <div className="font-medium">{playlist.songCount}</div>
-                                    </div>
-                                    <div className="h-10 w-px bg-border" />
-                                    <div className="space-y-1">
-                                        <div className="text-muted-foreground">Total votes</div>
-                                        <div className="font-medium">{playlist.totalVotes}</div>
-                                    </div>
-                                    <div className="h-10 w-px bg-border" />
-                                    <div className="space-y-1 text-right">
-                                        <div className="text-muted-foreground">Created</div>
-                                        <div className="font-medium">{createdAtLabel}</div>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    );
-                })}
-            </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {playlists.map((playlist) => {
+              const createdAtLabel = new Date(playlist.createdAt).toLocaleDateString();
+
+              return (
+                <button
+                  type="button"
+                  onClick={() => router.push(`/playlist/${playlist.id}`)}
+                  key={playlist.id}
+                  className="rounded-[1.5rem] border border-white/70 bg-white/80 p-5 text-left shadow-[0_16px_40px_rgba(15,23,42,0.06)] transition-transform hover:-translate-y-0.5"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-xs font-medium uppercase tracking-[0.28em] text-primary">Playlist</div>
+                      <h3 className="mt-3 text-xl font-semibold text-slate-900">{playlist.name}</h3>
+                    </div>
+                    <span className="rounded-full bg-slate-950 px-3 py-1 text-xs text-white">
+                      {playlist.totalVotes} votes
+                    </span>
+                  </div>
+
+                  <div className="mt-6 grid grid-cols-3 gap-3 text-sm">
+                    <div className="rounded-2xl bg-slate-100 p-3">
+                      <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Songs</div>
+                      <div className="mt-1 text-lg font-semibold text-slate-900">{playlist.songCount}</div>
+                    </div>
+                    <div className="rounded-2xl bg-slate-100 p-3">
+                      <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Votes</div>
+                      <div className="mt-1 text-lg font-semibold text-slate-900">{playlist.totalVotes}</div>
+                    </div>
+                    <div className="rounded-2xl bg-slate-100 p-3">
+                      <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Created</div>
+                      <div className="mt-1 text-sm font-semibold text-slate-900">{createdAtLabel}</div>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         )}
+      </section>
     </div>
-    )
+  );
 }
