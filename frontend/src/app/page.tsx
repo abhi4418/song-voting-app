@@ -63,29 +63,29 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="rounded-[1.5rem] bg-slate-950 p-6 text-slate-50 shadow-2xl">
-            <div className="flex items-center justify-between text-xs uppercase tracking-[0.28em] text-slate-400">
+          <div className="rounded-[1.5rem] border border-cyan-100 bg-gradient-to-br from-cyan-50 via-white to-amber-50 p-6 shadow-2xl">
+            <div className="flex items-center justify-between text-xs uppercase tracking-[0.28em] text-slate-500">
               <span>Live snapshot</span>
               <span>now playing</span>
             </div>
             <div className="mt-6 space-y-4">
-              <div className="rounded-2xl bg-white/10 p-4">
-                <div className="text-sm text-slate-300">Top voted track</div>
-                <div className="mt-2 text-2xl font-semibold">Midnight City</div>
-                <div className="mt-1 text-sm text-slate-400">23 votes</div>
+              <div className="rounded-2xl bg-white p-4 shadow-sm">
+                <div className="text-sm text-slate-500">Top voted track</div>
+                <div className="mt-2 text-2xl font-semibold text-slate-900">Midnight City</div>
+                <div className="mt-1 text-sm text-slate-500">23 votes</div>
               </div>
-              <div className="space-y-3 rounded-2xl border border-white/10 p-4">
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-white/80 p-4">
                 <div className="flex items-center justify-between text-sm">
                   <span>Heat Waves</span>
-                  <span className="text-slate-400">18</span>
+                  <span className="text-slate-500">18</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span>Levitating</span>
-                  <span className="text-slate-400">14</span>
+                  <span className="text-slate-500">14</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span>Blinding Lights</span>
-                  <span className="text-slate-400">12</span>
+                  <span className="text-slate-500">12</span>
                 </div>
               </div>
             </div>

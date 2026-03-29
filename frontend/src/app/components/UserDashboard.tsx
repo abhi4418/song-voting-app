@@ -67,11 +67,11 @@ export default function UserDashboard() {
           </div>
         </div>
         <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-          <Card className="border-none bg-slate-950 text-white shadow-none">
+          <Card className="border-none bg-cyan-50 shadow-none">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-slate-300">Top playlists</CardTitle>
+              <CardTitle className="text-sm font-medium text-cyan-900">Top playlists</CardTitle>
             </CardHeader>
-            <CardContent className="text-3xl font-semibold">{playlists.length}</CardContent>
+            <CardContent className="text-3xl font-semibold text-cyan-950">{playlists.length}</CardContent>
           </Card>
           <Card className="border-none bg-amber-100 shadow-none">
             <CardHeader className="pb-2">
@@ -127,7 +127,7 @@ export default function UserDashboard() {
                     <div className="text-xs font-medium uppercase tracking-[0.28em] text-primary">Live queue</div>
                     <h3 className="mt-3 text-xl font-semibold text-slate-900">{playlist.name}</h3>
                   </div>
-                  <span className="rounded-full bg-slate-950 px-3 py-1 text-xs text-white">
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
                     {playlist.totalVotes} votes
                   </span>
                 </div>
