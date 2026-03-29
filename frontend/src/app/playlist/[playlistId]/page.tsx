@@ -226,6 +226,9 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
 
   useEffect(() => {
     if (!isOwner) {
+      if (playerRef.current) {
+        void playerRef.current.stopVideo();
+      }
       setCurrentVideoTitle("");
       setPendingSwitchSong(null);
       activePlayerSongIdRef.current = null;
@@ -236,6 +239,9 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
     const videoId = extractYouTubeId(topSong?.url);
 
     if (!playerContainerRef.current || !topSong || !videoId) {
+      if (playerRef.current) {
+        void playerRef.current.stopVideo();
+      }
       activePlayerSongIdRef.current = null;
       setPendingSwitchSong(null);
       if (!topSong) {
