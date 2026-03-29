@@ -104,6 +104,20 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
     });
   };
 
+  const resetPlayer = useCallback(() => {
+    const activePlayer = playerRef.current;
+
+    if (activePlayer) {
+      void activePlayer.stopVideo().catch(() => undefined);
+      activePlayer.destroy();
+      playerRef.current = null;
+    }
+
+    activePlayerSongIdRef.current = null;
+    setPendingSwitchSong(null);
+    setCurrentVideoTitle("");
+  }, []);
+
   const fetchPlayListData = useCallback(async () => {
     if (!token) {
       return;
@@ -188,12 +202,14 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
   }, []);
 
   const deleteSongById = useCallback(
-    async (songId: string) => {
+    async (songId: string, recordAsPlayed = false) => {
       if (!token) {
         return;
       }
 
-      await apiRequest(`/api/song/delete/${songId}`, {
+      const query = recordAsPlayed ? "?recordAsPlayed=true" : "";
+
+      await apiRequest(`/api/song/delete/${songId}${query}`, {
         method: "DELETE",
         token,
       });
@@ -209,11 +225,14 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
       return;
     }
 
-    await deleteSongById(activeSongId);
+    await deleteSongById(activeSongId, true);
     const nextTop = getTopLikedSong(songsRef.current);
     if (nextTop) {
       playSong(nextTop);
+      return;
     }
+
+    resetPlayer();
   };
 
   const handleKeepCurrentSong = () => {
@@ -226,12 +245,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
 
   useEffect(() => {
     if (!isOwner) {
-      if (playerRef.current) {
-        void playerRef.current.stopVideo();
-      }
-      setCurrentVideoTitle("");
-      setPendingSwitchSong(null);
-      activePlayerSongIdRef.current = null;
+      resetPlayer();
       return;
     }
 
@@ -239,14 +253,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
     const videoId = extractYouTubeId(topSong?.url);
 
     if (!playerContainerRef.current || !topSong || !videoId) {
-      if (playerRef.current) {
-        void playerRef.current.stopVideo();
-      }
-      activePlayerSongIdRef.current = null;
-      setPendingSwitchSong(null);
-      if (!topSong) {
-        setCurrentVideoTitle("");
-      }
+      resetPlayer();
       return;
     }
 
@@ -265,11 +272,14 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
 
       player.on("stateChange", (event: { data?: number }) => {
         if (event?.data === 0 && isOwnerRef.current && activePlayerSongIdRef.current) {
-          void deleteSongById(activePlayerSongIdRef.current).then(() => {
+          void deleteSongById(activePlayerSongIdRef.current, true).then(() => {
             const nextTop = getTopLikedSong(songsRef.current);
             if (nextTop) {
               playSong(nextTop);
+              return;
             }
+
+            resetPlayer();
           });
         }
       });
@@ -280,16 +290,13 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
       activePlayerSongIdRef.current = topSong.id;
       setCurrentVideoTitle(topSong.title);
     }
-  }, [deleteSongById, isOwner, playSong, songs]);
+  }, [deleteSongById, isOwner, playSong, resetPlayer, songs]);
 
   useEffect(() => {
     return () => {
-      if (playerRef.current) {
-        playerRef.current.destroy();
-        playerRef.current = null;
-      }
+      resetPlayer();
     };
-  }, []);
+  }, [resetPlayer]);
 
   return (
     <ProtectedRoute>
@@ -327,9 +334,15 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
               </div>
               {isOwner ? (
                 <>
-                  <div className="mt-4 aspect-video overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
-                    <div ref={playerContainerRef} className="h-full w-full" />
-                  </div>
+                  {songs.length > 0 ? (
+                    <div className="mt-4 aspect-video overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
+                      <div ref={playerContainerRef} className="h-full w-full" />
+                    </div>
+                  ) : (
+                    <div className="mt-4 flex aspect-video items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white/80 text-sm text-slate-500">
+                      The player will appear when a song is available in the queue.
+                    </div>
+                  )}
                   <div className="mt-4 flex items-center justify-between gap-4">
                     <div className="text-sm text-slate-600">
                       {currentVideoTitle || "The highest-voted song will appear here once the queue has tracks."}

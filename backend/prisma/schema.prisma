@@ -38,6 +38,7 @@ model Playlist {
   updatedAt DateTime @updatedAt
   songs     Song[]
   likes     Likes[]
+  playedSongs PlayedSong[]
 }
 
 // song id s1 hai , p1 p2 2 playlist hai , agar s1 p1 me hai toh { s1 , p1} ke pair me like kar skte hai
@@ -68,4 +69,17 @@ model Likes {
   song     Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
   playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
   @@unique([userId, songId, playlistId])
+}
+
+model PlayedSong {
+  id           String   @id @default(uuid())
+  playlistId   String
+  title        String
+  thumbNailUrl String
+  duration     Int
+  url          String
+  playedAt     DateTime @default(now())
+  playlist     Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+
+  @@index([playlistId, playedAt])
 }

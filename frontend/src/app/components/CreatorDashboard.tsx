@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/context/AuthContext";
 import { apiRequest } from "@/lib/api";
+import { Clock3, History } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -18,8 +19,23 @@ interface Playlist {
   totalVotes: number;
 }
 
+interface PlayedSong {
+  id: string;
+  playlistId: string;
+  playlistName: string;
+  title: string;
+  thumbNailUrl: string;
+  duration: number;
+  url: string;
+  playedAt: string;
+}
+
 type PlaylistsResponse = {
   playlists: Playlist[];
+};
+
+type PlayedSongsResponse = {
+  playedSongs: PlayedSong[];
 };
 
 type CreatePlaylistResponse = {
@@ -31,6 +47,7 @@ export default function CreatorDashboard() {
   const { token } = useAuth();
   const [playlistName, setPlaylistName] = useState("");
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [playedSongs, setPlayedSongs] = useState<PlayedSong[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -39,18 +56,26 @@ export default function CreatorDashboard() {
   const fetchPlaylists = useCallback(async () => {
     if (!token) {
       setPlaylists([]);
+      setPlayedSongs([]);
       setIsLoading(false);
       return;
     }
 
     try {
       setIsLoading(true);
-      const response = await apiRequest<PlaylistsResponse>("/api/playlist/my-playlists", {
-        method: "GET",
-        token,
-      });
+      const [playlistsResponse, playedSongsResponse] = await Promise.all([
+        apiRequest<PlaylistsResponse>("/api/playlist/my-playlists", {
+          method: "GET",
+          token,
+        }),
+        apiRequest<PlayedSongsResponse>("/api/playlist/played-history", {
+          method: "GET",
+          token,
+        }),
+      ]);
 
-      setPlaylists(response.playlists ?? []);
+      setPlaylists(playlistsResponse.playlists ?? []);
+      setPlayedSongs(playedSongsResponse.playedSongs ?? []);
       setErrorMessage("");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to load playlists.");
@@ -88,6 +113,15 @@ export default function CreatorDashboard() {
     } finally {
       setIsCreating(false);
     }
+  };
+
+  const formatDuration = (totalSeconds: number) => {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = Math.floor(totalSeconds % 60)
+      .toString()
+      .padStart(2, "0");
+
+    return `${minutes}:${seconds}`;
   };
 
   return (
@@ -183,6 +217,53 @@ export default function CreatorDashboard() {
                 </button>
               );
             })}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-4">
+        <div className="flex items-center gap-2">
+          <History className="size-5 text-primary" />
+          <div>
+            <h2 className="text-2xl font-semibold text-slate-900">Played songs</h2>
+            <p className="text-sm text-slate-600">A recent log of tracks that were actually played from your queues.</p>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="h-28 animate-pulse rounded-[1.5rem] border border-white/60 bg-white/60" />
+            ))}
+          </div>
+        ) : playedSongs.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white/60 p-8 text-sm text-slate-600">
+            No played songs yet. Once tracks finish or are skipped from a live queue, they'll show up here.
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {playedSongs.map((song) => (
+              <Card key={song.id} className="border-white/70 bg-white/80 shadow-[0_16px_40px_rgba(15,23,42,0.06)]">
+                <CardContent className="flex gap-4 p-4">
+                  <img
+                    src={song.thumbNailUrl}
+                    alt={song.title}
+                    className="h-20 w-28 rounded-2xl object-cover bg-slate-100"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-medium uppercase tracking-[0.22em] text-primary">
+                      {song.playlistName}
+                    </div>
+                    <h3 className="mt-2 line-clamp-2 text-base font-semibold text-slate-900">{song.title}</h3>
+                    <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+                      <Clock3 className="size-4" />
+                      <span>{new Date(song.playedAt).toLocaleString()}</span>
+                    </div>
+                    <div className="mt-2 text-xs text-slate-500">{formatDuration(song.duration)}</div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         )}
       </section>

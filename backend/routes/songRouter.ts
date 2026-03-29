@@ -260,6 +260,20 @@ songRouter.delete("/delete/:songId", async (req, res) => {
       });
     }
 
+    const recordAsPlayed = req.query.recordAsPlayed === "true";
+
+    if (recordAsPlayed) {
+      await prisma.playedSong.create({
+        data: {
+          playlistId: song.playlistId,
+          title: song.title,
+          thumbNailUrl: song.thumbNailUrl,
+          duration: song.duration,
+          url: song.url,
+        },
+      });
+    }
+
     await prisma.likes.deleteMany({
       where: {
         songId: req.params.songId,
