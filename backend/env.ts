@@ -13,3 +13,7 @@ export const ALLOWED_ORIGINS = (process.env.CORS_ORIGIN ?? "")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
+
+if (IS_PRODUCTION && ALLOWED_ORIGINS.length === 0) {
+  throw new Error("CORS_ORIGIN must be set in production.");
+}

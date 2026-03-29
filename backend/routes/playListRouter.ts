@@ -25,9 +25,11 @@ playListRouter.post("/create", async (req, res) => {
       });
     }
 
+    const { name: validName } = parsed.data;
+
     const playlist = await prisma.playlist.create({
       data: {
-        name,
+        name: validName,
         creatorId,
       },
     });
