@@ -220,6 +220,56 @@ playListRouter.get("/my-playlists", async (req, res) => {
   }
 });
 
+playListRouter.get("/played-history", async (req, res) => {
+  try {
+    if (req.role !== Role.CREATOR) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to view played songs",
+      });
+    }
+
+    const playedSongs = await prisma.playedSong.findMany({
+      where: {
+        playlist: {
+          creatorId: req.userId,
+        },
+      },
+      orderBy: {
+        playedAt: "desc",
+      },
+      take: 50,
+      include: {
+        playlist: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Played songs fetched successfully",
+      playedSongs: playedSongs.map((song) => ({
+        id: song.id,
+        playlistId: song.playlistId,
+        playlistName: song.playlist.name,
+        title: song.title,
+        thumbNailUrl: song.thumbNailUrl,
+        duration: song.duration,
+        url: song.url,
+        playedAt: song.playedAt.toISOString(),
+      })),
+    });
+  } catch (_error) {
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+});
+
 playListRouter.delete("/delete/:playlistId", async (req, res) => {
   try {
     if (req.role !== Role.CREATOR) {
