@@ -1,0 +1,71 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  CREATOR
+}
+
+model User {
+  id      String   @id @default(uuid())
+  email   String   @unique
+  password String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  role      Role     @default(USER)
+  playlists Playlist[]
+  likes     Likes[]
+}
+
+model Playlist {
+  id        String   @id @default(uuid())
+  name      String
+  creatorId String
+  creator   User     @relation(fields: [creatorId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  songs     Song[]
+  likes     Likes[]
+}
+
+// song id s1 hai , p1 p2 2 playlist hai , agar s1 p1 me hai toh { s1 , p1} ke pair me like kar skte hai
+// {s1,p2} se try karega koi toh nahi hoga like
+// {s1,p1} me try karega toh hoga like
+model Song {
+  id            String   @id @default(uuid())
+  title         String
+  thumbNailUrl  String
+  duration      Int
+  url           String
+  playlistId    String
+  playlist      Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  likes         Likes[]
+}
+
+
+model Likes {
+  id         String   @id @default(uuid())
+  userId     String
+  songId     String
+  playlistId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  song     Song     @relation(fields: [songId], references: [id], onDelete: Cascade)
+  playlist Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  @@unique([userId, songId, playlistId])
+}
