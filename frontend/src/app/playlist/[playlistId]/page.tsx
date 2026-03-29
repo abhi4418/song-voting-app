@@ -28,6 +28,12 @@ type SongsResponse = {
   songs: ApiSong[];
 };
 
+type PendingSwitchSong = {
+  id: string;
+  title: string;
+  url: string;
+};
+
 export default function PlaylistPage({ params }: { params: Promise<{ playlistId: string }> }) {
   const { isLoading, user, token } = useAuth();
   const { playlistId } = use(params);
@@ -35,13 +41,13 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
   const [loadingSongs, setLoadingSongs] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [playlist, setPlaylist] = useState<PlaylistDetails | null>(null);
+  const [currentVideoTitle, setCurrentVideoTitle] = useState("");
+  const [pendingSwitchSong, setPendingSwitchSong] = useState<PendingSwitchSong | null>(null);
   const playerContainerRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<ReturnType<typeof YouTubePlayer> | null>(null);
   const songsRef = useRef<ApiSong[]>([]);
   const isOwnerRef = useRef(false);
-  const currentTopSongIdRef = useRef<string | null>(null);
   const activePlayerSongIdRef = useRef<string | null>(null);
-  const [currentVideoTitle, setCurrentVideoTitle] = useState("");
 
   const isOwner = useMemo(() => {
     if (!user || !playlist?.creatorId) {
@@ -50,53 +56,6 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
 
     return user.id === playlist.creatorId;
   }, [playlist?.creatorId, user]);
-
-  const fetchPlayListData = useCallback(async () => {
-    if (!token) {
-      return;
-    }
-
-    try {
-      setError(null);
-      setLoadingSongs(true);
-      const response = await apiRequest<SongsResponse>(`/api/playlist/songs-sorted/${playlistId}`, {
-        method: "GET",
-        token,
-      });
-
-      setSongs(response.songs ?? []);
-    } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "Failed to load playlist");
-    } finally {
-      setLoadingSongs(false);
-    }
-  }, [playlistId, token]);
-
-  const fetchPlaylistDetails = useCallback(async () => {
-    if (!token) {
-      return;
-    }
-
-    try {
-      const response = await apiRequest<PlaylistDetailsResponse>(`/api/playlist/details/${playlistId}`, {
-        method: "GET",
-        token,
-      });
-
-      setPlaylist(response.playlist);
-    } catch (_error) {
-      setPlaylist(null);
-    }
-  }, [playlistId, token]);
-
-  useEffect(() => {
-    if (!token) {
-      return;
-    }
-
-    void fetchPlayListData();
-    void fetchPlaylistDetails();
-  }, [fetchPlayListData, fetchPlaylistDetails, playlistId, token]);
 
   const extractYouTubeId = (url: string | undefined | null): string | null => {
     if (!url) {
@@ -145,56 +104,143 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
     });
   };
 
-  useEffect(() => {
-    songsRef.current = songs;
-    isOwnerRef.current = isOwner;
-    const topSong = getTopLikedSong(songs);
-    currentTopSongIdRef.current = topSong?.id ?? null;
-  }, [isOwner, songs]);
-
-  const deleteSongById = useCallback(async (songId: string) => {
+  const fetchPlayListData = useCallback(async () => {
     if (!token) {
       return;
     }
 
-    await apiRequest(`/api/song/delete/${songId}`, {
-      method: "DELETE",
-      token,
-    });
-    await fetchPlayListData();
-  }, [fetchPlayListData, token]);
+    try {
+      setError(null);
+      setLoadingSongs(true);
+      const response = await apiRequest<SongsResponse>(`/api/playlist/songs-sorted/${playlistId}`, {
+        method: "GET",
+        token,
+      });
 
-  const skipCurrentTopSong = async () => {
-    const topSong = getTopLikedSong(songsRef.current);
+      setSongs(response.songs ?? []);
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : "Failed to load playlist");
+    } finally {
+      setLoadingSongs(false);
+    }
+  }, [playlistId, token]);
 
-    if (!topSong || !isOwnerRef.current) {
+  const fetchPlaylistDetails = useCallback(async () => {
+    if (!token) {
       return;
     }
 
-    await deleteSongById(topSong.id);
-    const nextTop = getTopLikedSong(songsRef.current);
-    const nextVideoId = extractYouTubeId(nextTop?.url);
+    try {
+      const response = await apiRequest<PlaylistDetailsResponse>(`/api/playlist/details/${playlistId}`, {
+        method: "GET",
+        token,
+      });
 
-    if (playerRef.current && nextVideoId) {
-      playerRef.current.loadVideoById(nextVideoId);
-      activePlayerSongIdRef.current = nextTop?.id ?? null;
-      setCurrentVideoTitle(nextTop?.title ?? "");
+      setPlaylist(response.playlist);
+    } catch (_error) {
+      setPlaylist(null);
     }
+  }, [playlistId, token]);
+
+  useEffect(() => {
+    if (!token) {
+      return;
+    }
+
+    void fetchPlayListData();
+    void fetchPlaylistDetails();
+  }, [fetchPlayListData, fetchPlaylistDetails, token]);
+
+  useEffect(() => {
+    songsRef.current = songs;
+    isOwnerRef.current = isOwner;
+    const topSong = getTopLikedSong(songs);
+
+    if (!topSong || topSong.id === activePlayerSongIdRef.current) {
+      setPendingSwitchSong(null);
+      return;
+    }
+
+    if (activePlayerSongIdRef.current && isOwner) {
+      setPendingSwitchSong({
+        id: topSong.id,
+        title: topSong.title,
+        url: topSong.url,
+      });
+    }
+  }, [isOwner, songs]);
+
+  const playSong = useCallback((song: PendingSwitchSong | ApiSong | null) => {
+    if (!song || !playerRef.current) {
+      return;
+    }
+
+    const nextVideoId = extractYouTubeId(song.url);
+
+    if (!nextVideoId) {
+      return;
+    }
+
+    playerRef.current.loadVideoById(nextVideoId);
+    activePlayerSongIdRef.current = song.id;
+    setCurrentVideoTitle(song.title);
+    setPendingSwitchSong(null);
+  }, []);
+
+  const deleteSongById = useCallback(
+    async (songId: string) => {
+      if (!token) {
+        return;
+      }
+
+      await apiRequest(`/api/song/delete/${songId}`, {
+        method: "DELETE",
+        token,
+      });
+      await fetchPlayListData();
+    },
+    [fetchPlayListData, token]
+  );
+
+  const skipCurrentTopSong = async () => {
+    const activeSongId = activePlayerSongIdRef.current;
+
+    if (!activeSongId || !isOwnerRef.current) {
+      return;
+    }
+
+    await deleteSongById(activeSongId);
+    const nextTop = getTopLikedSong(songsRef.current);
+    if (nextTop) {
+      playSong(nextTop);
+    }
+  };
+
+  const handleKeepCurrentSong = () => {
+    setPendingSwitchSong(null);
+  };
+
+  const handleSwitchToTopSong = () => {
+    playSong(pendingSwitchSong);
   };
 
   useEffect(() => {
     if (!isOwner) {
       setCurrentVideoTitle("");
+      setPendingSwitchSong(null);
       activePlayerSongIdRef.current = null;
       return;
     }
 
     const topSong = getTopLikedSong(songs);
     const videoId = extractYouTubeId(topSong?.url);
-    setCurrentVideoTitle(topSong?.title ?? "");
 
     if (!playerContainerRef.current || !topSong || !videoId) {
       activePlayerSongIdRef.current = null;
+      setPendingSwitchSong(null);
+      if (!topSong) {
+        setCurrentVideoTitle("");
+      }
       return;
     }
 
@@ -206,19 +252,17 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
           modestbranding: 1,
         },
       });
+
       playerRef.current = player;
       activePlayerSongIdRef.current = topSong.id;
+      setCurrentVideoTitle(topSong.title);
 
       player.on("stateChange", (event: { data?: number }) => {
-        if (event?.data === 0 && isOwnerRef.current && currentTopSongIdRef.current) {
-          void deleteSongById(currentTopSongIdRef.current).then(() => {
+        if (event?.data === 0 && isOwnerRef.current && activePlayerSongIdRef.current) {
+          void deleteSongById(activePlayerSongIdRef.current).then(() => {
             const nextTop = getTopLikedSong(songsRef.current);
-            const nextVideoId = extractYouTubeId(nextTop?.url);
-
-            if (nextVideoId && playerRef.current) {
-              playerRef.current.loadVideoById(nextVideoId);
-              activePlayerSongIdRef.current = nextTop?.id ?? null;
-              setCurrentVideoTitle(nextTop?.title ?? "");
+            if (nextTop) {
+              playSong(nextTop);
             }
           });
         }
@@ -226,11 +270,11 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
       return;
     }
 
-    if (activePlayerSongIdRef.current !== topSong.id) {
-      playerRef.current.loadVideoById(videoId);
+    if (!activePlayerSongIdRef.current) {
       activePlayerSongIdRef.current = topSong.id;
+      setCurrentVideoTitle(topSong.title);
     }
-  }, [deleteSongById, isOwner, songs]);
+  }, [deleteSongById, isOwner, playSong, songs]);
 
   useEffect(() => {
     return () => {
@@ -253,9 +297,7 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
                 Playlist room
               </span>
               <div>
-                <h1 className="text-3xl font-semibold text-slate-900">
-                  {playlist?.name ?? "Playlist"}
-                </h1>
+                <h1 className="text-3xl font-semibold text-slate-900">{playlist?.name ?? "Playlist"}</h1>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
                   Hosted by {playlist?.creator.email ?? "the playlist creator"}. Add songs, vote on the queue,
                   and let the top track rise to the front.
@@ -286,16 +328,29 @@ export default function PlaylistPage({ params }: { params: Promise<{ playlistId:
                     <div className="text-sm text-slate-600">
                       {currentVideoTitle || "The highest-voted song will appear here once the queue has tracks."}
                     </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={skipCurrentTopSong}
-                      disabled={!songs.length}
-                    >
+                    <Button type="button" variant="outline" onClick={skipCurrentTopSong} disabled={!songs.length}>
                       <SkipForward className="size-4" />
                       Skip
                     </Button>
                   </div>
+                  {pendingSwitchSong ? (
+                    <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-slate-700">
+                      <div className="font-medium text-slate-900">
+                        "{pendingSwitchSong.title}" is now the top-voted song.
+                      </div>
+                      <div className="mt-1">
+                        Switch playback now, or keep the current song going and change later.
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-3">
+                        <Button type="button" size="sm" onClick={handleSwitchToTopSong}>
+                          Switch song
+                        </Button>
+                        <Button type="button" size="sm" variant="outline" onClick={handleKeepCurrentSong}>
+                          Keep current song
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                 </>
               ) : (
                 <div className="mt-4 rounded-2xl border border-slate-200 bg-white/80 p-4 text-sm text-slate-600">
